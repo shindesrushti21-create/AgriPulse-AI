@@ -68,3 +68,64 @@
   consecutive months to avoid one-off noise being mislabeled as stress.
 - Validate that label distribution looks reasonable per district before
   moving to model training.
+
+
+## Week 2 — NDVI Anomaly Detection & Stress Labeling
+
+### What was built
+- Combined all 4 district CSVs (Pune/Baramati, Beed, Nagpur, Kolhapur)
+  from Week 1 into a single dataset (360 monthly records).
+- Computed a historical baseline for each district, for each calendar
+  month, using 2019-2024 data: the mean and standard deviation of NDVI.
+- Calculated a Z-score for every month:
+  Z = (NDVI - historical monthly mean) / historical monthly std dev
+  This measures how unusual a given month's vegetation health is,
+  relative to that same district's own typical pattern for that month
+  of the year (comparing July to July, not July to January).
+- Verified the Z-score distribution visually (histograms per district)
+  before proceeding - confirmed no broken/extreme values.
+
+### Threshold recalibration (data-driven, not assumed)
+- The originally planned fixed threshold (Z <= -2 for "severe stress")
+  was never reached anywhere in the dataset - the most extreme month
+  observed across all 4 districts was Z = -1.99.
+- Rather than force an unreached threshold, thresholds were recalibrated
+  using the actual observed Z-score percentiles:
+  - Emerging Stress: Z below the 10th percentile (~-1.29)
+  - Persistent Stress: Z below the 5th percentile (~-1.58), required
+    to persist for 2+ consecutive months (to avoid a single noisy
+    month being mislabeled as a sustained stress event)
+  - Recovery: assigned when a district was previously in a stress
+    state and NDVI climbs back above the Emerging Stress cutoff
+- This produced a believable label distribution: 303 Healthy, 31
+  Emerging Stress, 21 Recovery, 5 Persistent Stress months (out of 360
+  total). No single district dominates the stress categories; Nagpur
+  had zero Persistent Stress months, consistent with its different
+  agro-climatic profile.
+
+### Verification
+- Manually traced Beed's full month-by-month sequence (2019-2026)
+  against the raw NDVI and Z-score values to confirm the state
+  transition logic behaves correctly - e.g., two consecutive severe
+  months correctly escalate to "Persistent Stress," and recovery is
+  only assigned after a prior stress period, not randomly.
+
+### Known limitation (documented, not hidden)
+- The historical baseline period (2019-2024) is not fully independent
+  from the data being labeled, since it includes the same years being
+  evaluated. With only 6 years of data per calendar-month baseline, a
+  single unusual year can influence what counts as "normal." This is
+  a standard limitation in short-record remote sensing studies, but
+  worth being explicit about rather than presenting the thresholds as
+  more validated than they are. A longer historical baseline (10+
+  years) would make this more robust in a future version.
+
+### Next (Week 3)
+- Feature engineering: build predictive features from data available
+  *before* the month being predicted (e.g., prior month's NDVI, prior
+  month's rainfall, rolling averages) - critical to avoid data leakage
+  when forecasting next month's stress state.
+- Time-based train/test split (train on 2019-2024, test on 2025-2026)
+  rather than random shuffling, since this is a forecasting problem.
+- Train a baseline Random Forest classifier to predict next month's
+  stress state transition.
