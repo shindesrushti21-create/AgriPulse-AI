@@ -202,3 +202,6 @@
   months count).
 - Add basic explainability (SHAP values) if time permits.
 - Begin outlining the automation layer (n8n) and dashboard structure.
+
+
+
