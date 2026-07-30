@@ -129,3 +129,76 @@
   rather than random shuffling, since this is a forecasting problem.
 - Train a baseline Random Forest classifier to predict next month's
   stress state transition.
+
+
+## Week 3 — Feature Engineering & Baseline Forecasting Model
+
+### What was built
+- Engineered lagged and rolling features per district, using only
+  prior-month data (1-month lag, 2-month lag, 3-month rolling averages
+  of NDVI and rainfall, month-over-month NDVI change). Verified
+  manually that no feature leaks current-month information.
+- Created the forecasting target: next month's stress state, shifted
+  from Week 2's labels. Verified manually that each row's target
+  correctly reflects the following month.
+- Performed a time-based train/test split. An initial split (train
+  <=2024, test >=2025) produced a test set with zero stress examples,
+  since 2025-2026 turned out to be an unusually calm period. Checked
+  the yearly stress distribution across all districts and found real
+  stress events cluster in 2022-2023. Repositioned the split to:
+  train 2019-2022 (180 rows), test 2023-2024 (96 rows, containing a
+  real mix of all 4 states), and a separate 2025-2026 "recent holdout"
+  reported on but not used for primary evaluation.
+- Trained a baseline Random Forest classifier (200 trees, max_depth=6,
+  balanced class weights) to predict next-month stress state.
+
+### Baseline result and honest limitation
+- The initial 4-class model reached 70% overall accuracy, but this
+  was driven almost entirely by the majority "Healthy" class (89%
+  precision, 83% recall). Macro-averaged F1 across all 4 classes was
+  only 0.29 - the model struggled to distinguish Emerging Stress,
+  Persistent Stress, and Recovery from each other and from Healthy,
+  given only ~30 non-Healthy examples spread across those 3 categories
+  in the training set.
+- Confusion matrix analysis confirmed this: Emerging Stress and
+  Recovery predictions were scattered across all 4 categories rather
+  than being reliably distinguished.
+
+### Pivot to binary framing (evidence-based decision)
+- Tested a simplified binary target: "Stressed" (Emerging + Persistent
+  Stress) vs "Not Stressed" (Healthy + Recovery).
+- Result: macro-averaged F1 improved from 0.29 to 0.65. Stressed-class
+  recall improved from 0.20 (4-class) to 0.64 (binary) - the model now
+  catches roughly two-thirds of real stress events, up from one-fifth.
+- Precision on the Stressed class remains modest (0.32), meaning
+  frequent false alarms. This is treated as an acceptable tradeoff for
+  an early-warning use case, where missing a real stress event carries
+  a higher cost than a false alarm prompting unnecessary field
+  verification.
+- Decision: adopt the binary model as the primary forecasting output
+  going forward, given current data volume. The original 4-class
+  labeling from Week 2 remains useful for descriptive monitoring
+  (showing historical severity), even though it's not yet reliable
+  enough to forecast directly with this sample size.
+
+### Feature importance
+- The binary model's top predictor was zscore_lag1 (0.29 importance) -
+  last month's NDVI anomaly - which makes sense given it directly
+  encodes recent vegetation abnormality, the core signal the model
+  needs to forecast stress. NDVI_lag1 (0.17) and rainfall_lag1 (0.11)
+  followed.
+- The 4-class model's top features (NDVI_lag2, NDVI_rolling3_mean)
+  differed slightly in ranking, though both models consistently
+  favored NDVI-trend features over temperature (LST) or moisture
+  (NDMI) inputs - supporting the underlying hypothesis that recent
+  vegetation trend is the primary driver of near-term stress
+  transitions.
+
+### Next (Week 4)
+- Attempt to improve precision on the Stressed class without
+  sacrificing recall - options to explore: adjusting the classification
+  threshold, trying XGBoost as an alternative to Random Forest, or
+  gathering additional engineered features (e.g., consecutive dry
+  months count).
+- Add basic explainability (SHAP values) if time permits.
+- Begin outlining the automation layer (n8n) and dashboard structure.
