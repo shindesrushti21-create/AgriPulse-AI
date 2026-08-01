@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import joblib
 from pathlib import Path
 
 # ------------------------------------------
@@ -28,6 +29,23 @@ def load_data():
 
 data = load_data()
 
+
+@st.cache_resource
+def load_model():
+    model_path = BASE_DIR / "models" / "stress_forecast_rf_model.pkl"
+    loaded = joblib.load(model_path)
+    return loaded['model'], loaded['features']
+
+model, FEATURES = load_model()
+
+@st.cache_data
+def load_features_data():
+    df = pd.read_csv(processed_folder / "all_districts_with_features.csv")
+    df['date'] = pd.to_datetime(df['date'])
+    return df
+
+features_data = load_features_data()
+
 # ------------------------------------------
 # Header
 # ------------------------------------------
@@ -42,30 +60,79 @@ st.markdown("---")
 # ------------------------------------------
 latest_per_district = data.sort_values('date').groupby('district').tail(1)
 
-st.subheader("Current Status (Most Recent Available Month)")
 
-# ------------------------------------------
-# Show current status as colored cards - one per district
-# This uses Streamlit's column layout to place 4 districts side by side
-# ------------------------------------------
-cols = st.columns(len(latest_per_district))
+st.subheader("🔮 Risk Forecast — Next Month")
+st.caption("Predicted stress risk based on the most recent available satellite data")
 
-status_colors = {
-    "Healthy": "🟢",
-    "Emerging Stress": "🟡",
-    "Persistent Stress": "🔴",
-    "Recovery": "🔵"
-}
+latest_features = features_data.sort_values('date').groupby('district').tail(1)
 
-for col, (_, row) in zip(cols, latest_per_district.iterrows()):
+cols = st.columns(len(latest_features))
+
+for col, (_, row) in zip(cols, latest_features.iterrows()):
     with col:
-        icon = status_colors.get(row['stress_state'], "⚪")
+        # Handle any missing feature values gracefully
+        feature_row = row[FEATURES]
+        if feature_row.isna().any():
+            st.metric(label=row['district'], value="Insufficient data")
+            continue
+
+        X_input = pd.DataFrame([feature_row.values], columns=FEATURES)
+        proba = model.predict_proba(X_input)[0]
+        stressed_idx = list(model.classes_).index('Stressed')
+        risk_pct = proba[stressed_idx] * 100
+
+        if risk_pct >= 50:
+            icon = "🔴"
+            risk_label = "High Risk"
+        elif risk_pct >= 25:
+            icon = "🟡"
+            risk_label = "Moderate Risk"
+        else:
+            icon = "🟢"
+            risk_label = "Low Risk"
+
         st.metric(
             label=f"{icon} {row['district']}",
-            value=row['stress_state'],
-            delta=f"NDVI: {row['NDVI']:.3f}"
+            value=risk_label,
+            delta=f"{risk_pct:.0f}% stress probability"
         )
+        st.caption(f"Based on data through {row['date'].strftime('%B %Y')}")
+
+st.markdown("---")
+
+st.subheader("Current Status (Most Recent Available Month)")
+cols2 = st.columns(len(latest_per_district))
+status_colors = {"Healthy": "🟢", "Emerging Stress": "🟡", "Persistent Stress": "🔴", "Recovery": "🔵"}
+for col, (_, row) in zip(cols2, latest_per_district.iterrows()):
+    with col:
+        icon = status_colors.get(row['stress_state'], "⚪")
+        st.metric(label=f"{icon} {row['district']}", value=row['stress_state'], delta=f"NDVI: {row['NDVI']:.3f}")
         st.caption(f"As of {row['date'].strftime('%B %Y')}")
+
+# st.subheader("Current Status (Most Recent Available Month)")
+
+# # ------------------------------------------
+# # Show current status as colored cards - one per district
+# # This uses Streamlit's column layout to place 4 districts side by side
+# # ------------------------------------------
+# cols = st.columns(len(latest_per_district))
+
+# status_colors = {
+#     "Healthy": "🟢",
+#     "Emerging Stress": "🟡",
+#     "Persistent Stress": "🔴",
+#     "Recovery": "🔵"
+# }
+
+# for col, (_, row) in zip(cols, latest_per_district.iterrows()):
+#     with col:
+#         icon = status_colors.get(row['stress_state'], "⚪")
+#         st.metric(
+#             label=f"{icon} {row['district']}",
+#             value=row['stress_state'],
+#             delta=f"NDVI: {row['NDVI']:.3f}"
+#         )
+#         st.caption(f"As of {row['date'].strftime('%B %Y')}")
 
 st.markdown("---")
 
