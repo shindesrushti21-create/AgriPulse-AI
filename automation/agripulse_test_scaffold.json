@@ -1,0 +1,75 @@
+{
+  "name": ": AgriPulse - Test Scaffold",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "c43a1dd2-150e-4dd9-a49f-59b0b0847061",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ad200832-55ca-42fe-b531-90e3d22afc94",
+              "name": "message",
+              "value": "AgriPulse pipeline check - test run",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        144,
+        48
+      ],
+      "id": "3493d53f-d1e1-4b31-981e-90039e89abeb",
+      "name": "Edit Fields"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "77091b98-82c0-4a2e-a20e-455ac3cdbc8c",
+  "meta": {
+    "instanceId": "a3ba380e75053d3d43ef3242ff79b7a182ed91aa52675d494e546e730c67269b"
+  },
+  "nodeGroups": [],
+  "id": "vyhlzWtGJKtsCn2i",
+  "tags": []
+}
