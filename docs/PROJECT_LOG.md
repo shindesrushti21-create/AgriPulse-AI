@@ -205,3 +205,83 @@
 
 
 
+
+## Week 4 — Model Improvement, Explainability & Automation Scaffold
+
+### Goal
+Attempt to improve the binary forecasting model's precision (0.32 from
+Week 3) without sacrificing recall (0.64), then begin building the
+explainability and automation layers described in the original
+project scope.
+
+### Improvement attempts (Days 8-10)
+Three legitimate improvement attempts were tested against the Day 6/
+Week 3 baseline (Random Forest, 9 features, F1 = 0.42 for the Stressed
+class):
+
+- **XGBoost** (Day 8): Underperformed across all metrics (F1 = 0.17).
+  Likely cause: the training set (180 rows, 18 Stressed examples) is
+  too small for XGBoost's added model complexity to be an advantage
+  over Random Forest's simpler splits.
+- **Threshold tuning** (Day 9): Swept thresholds from 0.2-0.6. Best F1
+  (0.42) occurred at the default 0.4-0.5 range - no improvement over
+  the untuned model. Indicates the default threshold was already
+  reasonably well-calibrated for this model.
+- **Consecutive-stress-months feature** (Day 10): Added a feature
+  counting prior consecutive months with negative NDVI Z-score.
+  Result: F1 decreased to 0.375, likely due to overlapping information
+  with the existing zscore_lag1 feature, diluting the model's reliance
+  on its strongest predictor given the small training set.
+
+None of the three attempts improved on the Week 3 baseline. This is
+reported as a genuine, evidence-based finding: with the current data
+volume (4 districts, ~6 years), the Day 6 configuration appears close
+to a practical performance ceiling. Future improvement likely requires
+more historical data or additional districts, rather than further
+model/feature tuning alone.
+
+### Final model (Day 11)
+- Locked in the Day 6 configuration (Random Forest, 9 lagged/rolling
+  features, default 0.5 threshold) as the production model.
+- Saved to models/stress_forecast_rf_model.pkl using joblib, bundled
+  with its expected feature list. Verified the saved model reproduces
+  identical predictions when reloaded.
+
+### Explainability (Day 12)
+- Added SHAP (TreeExplainer) analysis for the final model.
+- Global summary plot confirms zscore_lag1 and NDVI_lag1 as the
+  strongest predictors, with intuitive directionality: low (negative)
+  prior Z-score and low prior NDVI push predictions toward "Stressed."
+- Generated an individual explanation for a real test case (Beed,
+  August 2023): predicted Stressed, actual Emerging Stress (a close
+  match). SHAP contributions (zscore_lag1: +0.18, NDVI_lag1: +0.10)
+  are consistent with the global pattern, giving confidence the
+  model's local reasoning matches its overall behavior.
+- This fulfills the "explainability" requirement from the original
+  project scope: predictions can now be inspected both globally (which
+  features matter overall) and locally (why one specific prediction
+  was made).
+
+### Automation scaffold (Day 13)
+- Installed Docker Desktop and ran n8n locally (self-hosted, free, no
+  subscription required) via the official Docker image.
+- Built and tested a minimal workflow (Schedule Trigger -> Edit Fields)
+  to confirm n8n executes successfully end-to-end.
+- Exported the workflow as JSON to automation/ for version control.
+  This is a scaffold only - not yet connected to the real pipeline.
+
+### Next (Week 5)
+- Connect n8n to the actual pipeline: trigger the Python feature-
+  engineering and prediction scripts on a schedule (initially manual
+  trigger, then time-based).
+- Design and build a basic dashboard (map + trend chart + current risk
+  list) to surface model predictions to an end user.
+- Begin drafting the full README with the project's problem statement,
+  architecture, and results, now that there's a complete, working
+  pipeline to describe.
+
+
+
+
+  
+
