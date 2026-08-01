@@ -2,10 +2,28 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import joblib
+import shap
 from pathlib import Path
 
+
+with st.sidebar:
+    st.markdown("### About AgriPulse AI")
+    st.markdown(
+        "A satellite-based early warning system for agricultural "
+        "vegetation stress, built using Google Earth Engine, "
+        "machine learning, and explainable AI."
+    )
+    st.markdown("---")
+    st.markdown("**Pilot districts:**")
+    st.markdown("- Pune (Baramati)\n- Beed\n- Nagpur\n- Kolhapur")
+    st.markdown("---")
+    st.markdown("**Data sources:**")
+    st.markdown("- Sentinel-2 (NDVI, NDMI)\n- CHIRPS (rainfall)\n- MODIS (temperature)")
+    st.markdown("---")
+    st.caption("Built by Srushti Shinde")
+
 # ------------------------------------------
-# Page setup - this must be the FIRST Streamlit command in the script
+# Page setup - must be the FIRST Streamlit command
 # ------------------------------------------
 st.set_page_config(
     page_title="AgriPulse AI - Vegetation Stress Monitor",
@@ -17,9 +35,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 processed_folder = BASE_DIR / "data" / "processed"
 
 # ------------------------------------------
-# Load data - cached so it doesn't reload on every interaction
-# (Streamlit reruns the ENTIRE script on every click/interaction -
-# caching prevents re-reading the CSV every single time)
+# Minor custom styling for spacing and card appearance
+# ------------------------------------------
+st.markdown("""
+    <style>
+    div[data-testid="stMetric"] {
+        background-color: #f8f9fa;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 12px;
+    }
+    div[data-testid="stMetricLabel"] {
+        font-size: 14px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ------------------------------------------
+# Load data and model (cached so they don't reload on every interaction)
 # ------------------------------------------
 @st.cache_data
 def load_data():
@@ -28,7 +61,6 @@ def load_data():
     return df
 
 data = load_data()
-
 
 @st.cache_resource
 def load_model():
@@ -54,13 +86,9 @@ st.markdown("**Satellite-based vegetation stress monitoring — Maharashtra pilo
 st.markdown("---")
 
 # ------------------------------------------
-# Get the MOST RECENT month's data per district - this is the
-# "current status" view, the single most important thing a user
-# wants to see first
+# STEP 1: Risk Forecast — must come first, this is where
+# latest_features gets defined, before anything else uses it
 # ------------------------------------------
-latest_per_district = data.sort_values('date').groupby('district').tail(1)
-
-
 st.subheader("🔮 Risk Forecast — Next Month")
 st.caption("Predicted stress risk based on the most recent available satellite data")
 
@@ -70,7 +98,6 @@ cols = st.columns(len(latest_features))
 
 for col, (_, row) in zip(cols, latest_features.iterrows()):
     with col:
-        # Handle any missing feature values gracefully
         feature_row = row[FEATURES]
         if feature_row.isna().any():
             st.metric(label=row['district'], value="Insufficient data")
@@ -100,7 +127,71 @@ for col, (_, row) in zip(cols, latest_features.iterrows()):
 
 st.markdown("---")
 
+# ------------------------------------------
+# STEP 2: SHAP explanation - comes AFTER latest_features exists
+# ------------------------------------------
+st.subheader("💡 Why This Prediction?")
+
+risk_scores = {}
+for _, row in latest_features.iterrows():
+    feature_row = row[FEATURES]
+    if feature_row.isna().any():
+        continue
+    X_input = pd.DataFrame([feature_row.values], columns=FEATURES)
+    proba = model.predict_proba(X_input)[0]
+    stressed_idx = list(model.classes_).index('Stressed')
+    risk_scores[row['district']] = proba[stressed_idx]
+
+if risk_scores:
+    highest_risk_district = max(risk_scores, key=risk_scores.get)
+    highest_risk_pct = risk_scores[highest_risk_district] * 100
+
+    st.markdown(f"**Highest current risk: {highest_risk_district} ({highest_risk_pct:.0f}%)**")
+
+    explain_row = latest_features[latest_features['district'] == highest_risk_district].iloc[0]
+    X_explain = pd.DataFrame([explain_row[FEATURES].values], columns=FEATURES)
+
+    explainer = shap.TreeExplainer(model)
+    shap_vals = explainer.shap_values(X_explain)
+
+    stressed_idx = list(model.classes_).index('Stressed')
+    if isinstance(shap_vals, list):
+        contributions = shap_vals[stressed_idx][0]
+    else:
+        contributions = shap_vals[0, :, stressed_idx]
+
+    contrib_series = pd.Series(contributions, index=FEATURES).sort_values(key=abs, ascending=False)
+
+    readable_names = {
+        'zscore_lag1': "Last month's vegetation anomaly (Z-score)",
+        'NDVI_lag1': "Last month's vegetation index (NDVI)",
+        'rainfall_lag1': "Last month's rainfall",
+        'NDVI_rolling3_mean': "3-month average vegetation index",
+        'NDVI_change_lag1': "Recent month-over-month vegetation change",
+        'NDMI_lag1': "Last month's vegetation moisture (NDMI)",
+        'LST_lag1': "Last month's land surface temperature",
+        'NDVI_lag2': "Vegetation index, 2 months ago",
+        'rainfall_rolling3_sum': "Total rainfall over the past 3 months"
+    }
+
+    st.markdown("**Top factors influencing this forecast:**")
+    for feat, val in contrib_series.head(3).items():
+        direction = "⬆️ increased" if val > 0 else "⬇️ decreased"
+        name = readable_names.get(feat, feat)
+        st.markdown(f"- {name}: **{direction}** predicted risk")
+
+    st.caption("Explanation generated using SHAP (SHapley Additive exPlanations) on the trained Random Forest model.")
+
+st.markdown("---")
+
+# ------------------------------------------
+# STEP 3: Current Status (observed, historical - for context
+# alongside the forecast above)
+# ------------------------------------------
 st.subheader("Current Status (Most Recent Available Month)")
+
+latest_per_district = data.sort_values('date').groupby('district').tail(1)
+
 cols2 = st.columns(len(latest_per_district))
 status_colors = {"Healthy": "🟢", "Emerging Stress": "🟡", "Persistent Stress": "🔴", "Recovery": "🔵"}
 for col, (_, row) in zip(cols2, latest_per_district.iterrows()):
@@ -109,36 +200,10 @@ for col, (_, row) in zip(cols2, latest_per_district.iterrows()):
         st.metric(label=f"{icon} {row['district']}", value=row['stress_state'], delta=f"NDVI: {row['NDVI']:.3f}")
         st.caption(f"As of {row['date'].strftime('%B %Y')}")
 
-# st.subheader("Current Status (Most Recent Available Month)")
-
-# # ------------------------------------------
-# # Show current status as colored cards - one per district
-# # This uses Streamlit's column layout to place 4 districts side by side
-# # ------------------------------------------
-# cols = st.columns(len(latest_per_district))
-
-# status_colors = {
-#     "Healthy": "🟢",
-#     "Emerging Stress": "🟡",
-#     "Persistent Stress": "🔴",
-#     "Recovery": "🔵"
-# }
-
-# for col, (_, row) in zip(cols, latest_per_district.iterrows()):
-#     with col:
-#         icon = status_colors.get(row['stress_state'], "⚪")
-#         st.metric(
-#             label=f"{icon} {row['district']}",
-#             value=row['stress_state'],
-#             delta=f"NDVI: {row['NDVI']:.3f}"
-#         )
-#         st.caption(f"As of {row['date'].strftime('%B %Y')}")
-
 st.markdown("---")
 
 # ------------------------------------------
-# District selector - lets the user pick which district to explore
-# in detail below
+# STEP 4: District explorer - trend chart + stats + raw data
 # ------------------------------------------
 st.subheader("Explore a District")
 
@@ -149,9 +214,6 @@ selected_district = st.selectbox(
 
 district_data = data[data['district'] == selected_district].sort_values('date')
 
-# ------------------------------------------
-# Summary stats for the selected district
-# ------------------------------------------
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
@@ -170,9 +232,6 @@ with col4:
     latest_state = district_data.iloc[-1]['stress_state']
     st.metric("Latest State", latest_state)
 
-# ------------------------------------------
-# NDVI trend chart, color-coded by stress state
-# ------------------------------------------
 st.markdown(f"#### NDVI Trend — {selected_district}")
 
 state_colors = {
@@ -184,7 +243,6 @@ state_colors = {
 
 fig = go.Figure()
 
-# Main NDVI line
 fig.add_trace(go.Scatter(
     x=district_data['date'],
     y=district_data['NDVI'],
@@ -194,7 +252,6 @@ fig.add_trace(go.Scatter(
     hoverinfo='skip'
 ))
 
-# Colored dots per stress state, one trace per state so the legend works cleanly
 for state, color in state_colors.items():
     subset = district_data[district_data['stress_state'] == state]
     fig.add_trace(go.Scatter(
@@ -216,9 +273,6 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# ------------------------------------------
-# Raw data table - now secondary, collapsed by default
-# ------------------------------------------
 with st.expander("View raw monthly data"):
     display_cols = ['date', 'NDVI', 'NDVI_zscore', 'rainfall_mm', 'LST_celsius', 'stress_state']
     st.dataframe(
@@ -226,8 +280,9 @@ with st.expander("View raw monthly data"):
         use_container_width=True,
         hide_index=True
     )
+
 # ------------------------------------------
-# Footer / methodology note - honesty about what this shows
+# Footer
 # ------------------------------------------
 st.markdown("---")
 st.caption(
