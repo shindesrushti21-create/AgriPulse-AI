@@ -1,0 +1,93 @@
+{
+  "name": "AgriPulse - Full Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "934d5b42-6567-4ce8-8180-9a73685b7af9",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execFile } = require('child_process');\n\nconst pythonPath = \"D:\\\\AgriPulse-AI\\\\AgriPulse-AI\\\\.venv\\\\Scripts\\\\python.exe\";\nconst scriptPath = \"D:\\\\AgriPulse-AI\\\\AgriPulse-AI\\\\notebooks\\\\day20_run_prediction_check.py\";\n\nreturn new Promise((resolve, reject) => {\n  execFile(pythonPath, [scriptPath], (error, stdout, stderr) => {\n    if (error) {\n      reject(new Error(stderr || error.message));\n    } else {\n      resolve([{ json: { output: stdout } }]);\n    }\n  });\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "332eb0b2-3226-4c66-a7aa-09db035f7cd0",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {
+    "Schedule Trigger": [
+      {
+        "json": {
+          "timestamp": "2026-08-01T14:37:38.172-04:00",
+          "Readable date": "August 1st 2026, 2:37:38 pm",
+          "Readable time": "2:37:38 pm",
+          "Day of week": "Saturday",
+          "Year": "2026",
+          "Month": "August",
+          "Day of month": "01",
+          "Hour": "14",
+          "Minute": "37",
+          "Second": "38",
+          "Timezone": "America/New_York (UTC-04:00)"
+        }
+      }
+    ],
+    "Code in JavaScript": [
+      {
+        "json": {
+          "output": "AgriPulse Risk Check - 2026-08-02 00:14\r\n==================================================\r\nBeed: 4% stress risk\r\nKolhapur: 1% stress risk\r\nNagpur: 45% stress risk\r\nPune_Baramati: 9% stress risk\r\n\r\nSaved log to: D:\\AgriPulse-AI\\AgriPulse-AI\\automation\\last_risk_check.txt\r\n"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "ad1d87b2-3903-48e4-bdcd-ef8dcc2d7a06",
+  "meta": {
+    "instanceId": "a1c881e35a77b7cfeac889b76882b540f8afa884fb9fb062cf4e60565aa79b8e"
+  },
+  "nodeGroups": [],
+  "id": "xgJi05gh8Bths4cx",
+  "tags": []
+}

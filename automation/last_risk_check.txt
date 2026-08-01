@@ -1,0 +1,6 @@
+AgriPulse Risk Check - 2026-08-02 00:14
+==================================================
+Beed: 4% stress risk
+Kolhapur: 1% stress risk
+Nagpur: 45% stress risk
+Pune_Baramati: 9% stress risk
