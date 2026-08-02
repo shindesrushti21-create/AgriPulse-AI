@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AgriPulse AI</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1000px; margin: 40px auto; padding: 0 20px; }
+        h1 { color: #2ecc71; }
+        h2 { margin-top: 40px; border-bottom: 2px solid #eee; padding-bottom: 8px; }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 10px 10px 10px 0;
+            display: inline-block;
+            width: 200px;
+            vertical-align: top;
+            cursor: pointer;
+            transition: box-shadow 0.2s;
+        }
+        .card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+        .risk-high { border-left: 5px solid #e74c3c; }
+        .risk-moderate { border-left: 5px solid #f39c12; }
+        .risk-low { border-left: 5px solid #2ecc71; }
+        #status { color: #888; }
+        #explanation-box, #history-box {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 10px;
+            min-height: 60px;
+        }
+        select { padding: 8px; font-size: 14px; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eee; font-size: 14px; }
+        .state-Healthy { color: #27ae60; }
+        .state-Emerging-Stress { color: #f39c12; }
+        .state-Persistent-Stress { color: #e74c3c; }
+        .state-Recovery { color: #2980b9; }
+    </style>
+</head>
+<body>
+    <h1>🌾 AgriPulse AI</h1>
+    <p>Satellite-based vegetation stress monitoring — Maharashtra pilot districts</p>
+
+    <h2>🔮 Risk Forecast — Next Month</h2>
+    <div id="status">Loading forecasts...</div>
+    <div id="forecasts"></div>
+    <p><small>Click a district card to see its explanation and history below.</small></p>
+
+    <h2>💡 Why This Prediction?</h2>
+    <div id="explanation-box">Click a district above to see its explanation.</div>
+
+    <h2>📈 NDVI History</h2>
+    <div id="history-box">Click a district above to see its history.</div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+
+        async function loadForecasts() {
+            const statusDiv = document.getElementById('status');
+            const forecastsDiv = document.getElementById('forecasts');
+
+            try {
+                const response = await fetch(`${API_BASE}/risk`);
+                const data = await response.json();
+                statusDiv.textContent = '';
+
+                data.forecasts.forEach(item => {
+                    const card = document.createElement('div');
+                    let riskClass = 'risk-low';
+                    if (item.risk_pct >= 50) riskClass = 'risk-high';
+                    else if (item.risk_pct >= 25) riskClass = 'risk-moderate';
+
+                    card.className = 'card ' + riskClass;
+                    card.innerHTML = `
+                        <strong>${item.district}</strong><br>
+                        Risk: ${item.risk_pct !== null ? item.risk_pct + '%' : 'N/A'}<br>
+                        <small>As of ${item.date || 'N/A'}</small>
+                    `;
+                    card.onclick = () => {
+                        loadExplanation(item.district);
+                        loadHistory(item.district);
+                    };
+                    forecastsDiv.appendChild(card);
+                });
+            } catch (error) {
+                statusDiv.textContent = 'Error connecting to backend: ' + error.message;
+                statusDiv.style.color = 'red';
+            }
+        }
+
+        async function loadExplanation(district) {
+            const box = document.getElementById('explanation-box');
+            box.textContent = 'Loading...';
+            try {
+                const response = await fetch(`${API_BASE}/explain/${district}`);
+                const data = await response.json();
+
+                let html = `<strong>Top factors for ${data.district}:</strong><ul>`;
+                data.top_factors.forEach(f => {
+                    const arrow = f.direction === 'increased' ? '⬆️' : '⬇️';
+                    html += `<li>${f.feature}: ${arrow} ${f.direction} predicted risk</li>`;
+                });
+                html += '</ul>';
+                box.innerHTML = html;
+            } catch (error) {
+                box.textContent = 'Error loading explanation: ' + error.message;
+            }
+        }
+
+        async function loadHistory(district) {
+            const box = document.getElementById('history-box');
+            box.textContent = 'Loading...';
+            try {
+                const response = await fetch(`${API_BASE}/history/${district}`);
+                const data = await response.json();
+
+                let html = `<strong>Recent history for ${data.district}:</strong>`;
+                html += '<table><tr><th>Date</th><th>NDVI</th><th>State</th></tr>';
+
+                const recentRows = data.history.slice(-12); // last 12 months
+                recentRows.forEach(row => {
+                    const stateClass = 'state-' + row.stress_state.replace(' ', '-');
+                    html += `<tr><td>${row.date}</td><td>${row.NDVI.toFixed(3)}</td><td class="${stateClass}">${row.stress_state}</td></tr>`;
+                });
+                html += '</table>';
+                box.innerHTML = html;
+            } catch (error) {
+                box.textContent = 'Error loading history: ' + error.message;
+            }
+        }
+
+        loadForecasts();
+    </script>
+</body>
+</html>
